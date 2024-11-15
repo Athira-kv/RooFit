@@ -1,0 +1,84 @@
+import numpy as np
+#import pandas as pd
+import matplotlib.pyplot as plt
+from collections import defaultdict
+
+# Function to calculate efficiency for each momentum bin
+def calculate_efficiency_by_category(categories, momenta, N_ij, N_i):
+    efficiencies_by_category = defaultdict(list)
+    
+    for cat in categories:
+        for mom in momenta:
+            N_i_value = N_i[(cat, mom)]  # Total N_i for category and momentum bin
+            N_ij_value = N_ij[(cat, mom)]  # Corresponding N(i -> j) value
+            efficiency = N_ij_value / N_i_value  # Calculate efficiency
+            efficiencies_by_category[cat].append((mom, efficiency))
+    
+    return efficiencies_by_category
+
+# Function to calculate the error on the efficiency based on covariance matrix
+def calculate_error_for_efficiency(efficiency, category, momentum, covariance_matrix, N_i, N_ij):
+    # Calculate the derivative of efficiency with respect to N(i -> j)
+    d_efficiency_d_N = lambda i, j: 1 / N_i[(category, momentum)]
+    
+    # Calculate the error using the formula provided
+    error_squared = 0
+    # Loop over all index combinations in the covariance matrix (i, j)
+    for index1 in range(2, 10, 2):  # Indices: 2, 4, 6, 8
+        for index2 in range(2, 10, 2):
+            if index1 <= index2:  # Ensuring no double counting
+                # Covariance between N(i -> j) and N(i -> k)
+                u_value = covariance_matrix.get((index1, index2), 0)  # Get covariance value
+                d_eff_d_N1 = d_efficiency_d_N(index1, index2)  # Derivative of efficiency wrt N(i -> j)
+                error_squared += (d_eff_d_N1 ** 2) * u_value  # Error term
+                
+    return np.sqrt(error_squared)
+
+def main():
+    # Read the data from the input file
+    data_file = 'k_covvalues.txt'  # Specify your input file
+    data = np.loadtxt(data_file, skiprows=1)
+    
+    # Define categories and momentum bins
+    categories = data[:,0]
+    momenta = data[:, 1]
+    n_as = data[:, 2]
+    n_pi_s = data[:, 3]
+    n_k_s = data[:, 4]
+    n_p_s = data[:, 5]
+    n_u_s = data[:, 6]
+
+    numerator_columns = [3,4,5,6]
+    ratios = []
+    errors = []
+
+    particle_labels = {3: 'pi', 4: 'K', 5: 'proton', 6: 'noID'}
+    for i, num_col in enumerate(numerator_columns):
+        numerator = data[:, num_col]  # Current numerator column
+        ratio = numerator / n_as
+        error = np.sqrt(ratio * (1 - ratio) / n_as)  # Binomial error
+        ratios.append(ratio)
+        errors.append(error)
+
+        # Get the label from the particle_labels dictionary
+        label = particle_labels.get(num_col, f'Unknown ({num_col})')  # Default label if not found
+
+        # Plot each ratio with error bars
+        plt.errorbar(momenta, ratio, yerr=error, fmt='o', label=f'$\epsilon$({label})', capsize=5)
+
+    plt.xlabel('Momentum (GeV/c)', fontsize=14)
+    plt.ylabel(r'$\epsilon(\pi^+ \rightarrow j^+) = \frac{N_{\pi^+ \rightarrow j^+}^{Sig}}{N_{{All events}}^{Sig}}$', fontsize=18)
+    plt.legend()
+    plt.grid()
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.ylim(0.0,1.0)
+    # Style the axes
+    plt.tick_params(axis='both', which='both', direction='in', length=6, width=2, color='black')
+    #plt.tight_layout()  # Adjust layout to prevent clipping
+    #plt.savefig("signal_yield_ratio_category_0_over_4.png")  # Save the figure
+    plt.show()  # Show the plot
+
+        
+if __name__ == '__main__':
+    main()

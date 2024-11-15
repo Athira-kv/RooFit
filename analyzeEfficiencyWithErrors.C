@@ -1,0 +1,216 @@
+#include <TFile.h>
+#include <TTree.h>
+#include <TH1F.h>
+#include <TCanvas.h>
+#include <TGraphErrors.h>
+#include <TMultiGraph.h>
+#include <TLegend.h>
+#include <TStyle.h>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <sstream>
+#include <map>
+#include <cmath>
+
+struct DataPoint {
+  double N_as, N_pi_s, N_k_s, N_p_s, N_u_s;
+  std::map<std::pair<int, int>, double> covariance;
+};
+
+
+// Function to print the contents of the covariance map
+void printCovarianceMap(const std::map<std::pair<int, int>, double>& covMap) {
+    std::cout << "Covariance Map Contents:\n";
+    for (const auto& entry : covMap) {
+        std::cout << "Key: (" << entry.first.first << ", " << entry.first.second 
+                  << ") -> Value: " << entry.second << '\n';
+    }
+}
+
+
+void analyzeEfficiencyWithErrors() {
+
+  // Map to store data points
+    std::map<std::pair<int, int>, DataPoint> dataMap; // (category, momentum) -> DataPoint
+
+    // Read data from file
+    std::ifstream infile("k_covvalues.txt");
+    std::string line;
+    
+    // Skip header
+    std::getline(infile, line);
+
+    while (std::getline(infile, line)) {
+        std::istringstream iss(line);
+        int category, momentum, index1, index2;
+        double N_as, N_pi_s, N_k_s, N_p_s, N_u_s, value;
+        if (!(iss >> category >> momentum >> N_as >> N_pi_s >> N_k_s >> N_p_s >> N_u_s >> index1 >> index2 >> value)) { 
+            break; 
+        }
+        
+        auto key = std::make_pair(category, momentum);
+        if (dataMap.find(key) == dataMap.end()) {
+            dataMap[key] = {N_as, N_pi_s, N_k_s, N_p_s, N_u_s, {}};
+        }
+        dataMap[key].covariance[std::make_pair(index1, index2)] = value;
+    }
+
+    // Create TGraphErrors for category 0
+    //TGraphErrors *graph0 = new TGraphErrors();
+
+    std::vector<TGraphErrors*> graphs(4); // For categories 0 through 3
+    for (int i = 0; i < 4; ++i) {
+      graphs[i] = new TGraphErrors();
+    }
+    
+    // Calculate efficiency and error for category 0
+    for (const auto &entry : dataMap) {
+      // if (entry.first.first != 2) continue; // Skip if not category 0
+      int category = entry.first.first;
+      if (category < 0 || category > 3) continue; // Skip if not in categories 0-3
+      
+        int momentum = entry.first.second;
+        const DataPoint &dp = entry.second;
+
+	printCovarianceMap(dp.covariance);
+
+	
+        double efficiency = 0.0;
+
+	if(category == 0){
+	  efficiency = dp.N_pi_s/ dp.N_as; }
+	else if (category == 1){
+	  efficiency = dp.N_k_s/ dp.N_as; }
+	else if (category == 2){
+	  efficiency = dp.N_p_s/ dp.N_as ; }
+	else if (category == 3){
+	  efficiency = dp.N_u_s/ dp.N_as ; }
+	
+        
+        // Calculate error
+        double var_pi = dp.covariance.at({6, 6});
+        double var_k = dp.covariance.at({2, 2});
+	double var_p = dp.covariance.at({4, 4});
+	double var_u = dp.covariance.at({8, 8});
+	
+        double cov_pi_k = dp.covariance.at({6, 2});
+        double cov_pi_p = dp.covariance.at({6, 4});
+	double cov_pi_u = dp.covariance.at({8, 6});
+	double cov_k_p = dp.covariance.at({4, 2});
+	double cov_k_u = dp.covariance.at({8, 2});
+	double cov_p_u = dp.covariance.at({8, 4});
+	
+        double deff_dpi = (dp.N_as - dp.N_pi_s)/(dp.N_as * dp.N_as);
+	double deff_dk = (dp.N_as - dp.N_k_s)/(dp.N_as * dp.N_as);
+	double deff_dp = (dp.N_as - dp.N_p_s)/(dp.N_as * dp.N_as);
+	double deff_du = (dp.N_as - dp.N_u_s)/(dp.N_as * dp.N_as);
+        
+        double error = sqrt(deff_dpi * deff_dpi * var_pi + 
+                            deff_dk * deff_dk * var_k +
+			    deff_dp * deff_dp * var_p +
+			    deff_du * deff_du * var_u +
+			    //.....................covaraince terms......................//////////////
+                            2 *( (deff_dpi * deff_dk * cov_pi_k)+
+				 (deff_dpi * deff_dp * cov_pi_p)+
+				 (deff_dpi * deff_du * cov_pi_u)+
+				 (deff_dk * deff_dp * cov_k_p)+
+				 (deff_dk * deff_du * cov_k_u)+
+				 (deff_dp * deff_du * cov_p_u)) );
+
+
+	int point = graphs[category]->GetN();
+	graphs[category]->SetPoint(point, momentum, efficiency);
+	graphs[category]->SetPointError(point, 0, error);
+	
+        //int point = graph0->GetN();
+	// graph0->SetPoint(point, momentum, efficiency);
+        //graph0->SetPointError(point, 0, error);
+    }
+
+    /* Set graph styles
+    graph0->SetMarkerStyle(20);
+    graph0->SetMarkerColor(kBlue);
+    graph0->SetTitle("Category 0: #pi Efficiency");
+    graph0->GetXaxis()->SetTitle("Momentum");
+    graph0->GetYaxis()->SetTitle("Efficiency");
+    */
+
+    const char* titles[] = {"Category 0: #pi Efficiency", "Category 1: misidentification to K", 
+      "Category 2: misidentification to p ", "Category 3: noID"};
+    Color_t colors[] = {kBlue, kRed, kGreen, kMagenta};
+    
+    for (int i = 0; i < 4; ++i) {
+      graphs[i]->SetMarkerStyle(20);
+      graphs[i]->SetMarkerColor(colors[i]);
+      graphs[i]->SetTitle(titles[i]);
+      graphs[i]->GetXaxis()->SetTitle("Momentum [GeV] ");
+      graphs[i]->GetYaxis()->SetTitle("Efficiency");
+    }
+
+    double offset = 0.1;
+    for (int i = 1; i < 4; ++i) {
+      int n = graphs[i]->GetN();
+      for (int j = 0; j < n; ++j) {
+        double x, y;
+        graphs[i]->GetPoint(j, x, y);
+        graphs[i]->SetPoint(j, x + i*offset, y);
+        if (auto graphErrors = dynamic_cast<TGraphErrors*>(graphs[i])) {
+          graphErrors->SetPointError(j, graphErrors->GetErrorX(j), graphErrors->GetErrorY(j));
+        }
+      }
+    }
+
+    double xMin = graphs[0]->GetXaxis()->GetXmin();
+    double xMax = graphs[0]->GetXaxis()->GetXmax();
+    TLine *zeroLine = new TLine(xMin, 0, xMax, 0);
+    zeroLine->SetLineStyle(2);
+    zeroLine->SetLineColor(kGray+2);
+    
+    
+    TCanvas *c1 = new TCanvas("c1", "Efficiency vs Momentum", 800, 600);
+    c1->DrawFrame(0, 0, 100, 1); // Adjust the range as needed
+    
+    graphs[0]->Draw("AP");
+    
+    // Add a legend
+    TLegend *legend = new TLegend(0.1, 0.1, 0.1, 0.1);
+    legend->AddEntry(graphs[0], titles[0]);
+    legend->Draw();
+    c1->Draw();
+
+    TCanvas *c2 = new TCanvas("c2", " Misidentification vs Momentum", 800, 600);
+    c1->DrawFrame(0, 0, 100, 1); // Adjust the range as needed
+
+    for (int i = 1; i < 4; ++i) {
+      if( i ==1){
+	graphs[i]->GetYaxis()->SetRangeUser(-0.002,0.16);
+	graphs[i]->Draw("AP");
+      } else {
+        graphs[i]->Draw("P SAME");
+      }
+    }
+    zeroLine->Draw();
+    
+    TLegend *legend2 = new TLegend(0.7, 0.7, 0.9, 0.9);
+    for (int i = 1; i < 4; ++i) {
+      legend2->AddEntry(graphs[i], titles[i], "p");
+    }
+    legend2->Draw();
+    c2->Draw();
+    // Create canvas and draw graph
+    //TCanvas *c1 = new TCanvas("c1", "Efficiency vs Momentum", 800, 600);
+    //graph0->Draw("AP");
+    //c1->Draw();
+    // c1->Update();
+    // c1->SaveAs("efficiency_plot_with_errors.png");
+    // for (auto graph : graphs) {
+    //delete graph;
+    // }
+    //delete c1;
+
+}
+
+void run() {
+    analyzeEfficiencyWithErrors();
+}

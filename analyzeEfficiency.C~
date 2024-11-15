@@ -1,0 +1,97 @@
+#include <TFile.h>
+#include <TTree.h>
+#include <TH1F.h>
+#include <TCanvas.h>
+#include <TGraph.h>
+#include <TMultiGraph.h>
+#include <TLegend.h>
+#include <TStyle.h>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <sstream>
+
+void analyzeEfficiency() {
+    // Create a ROOT file to store the TTree
+    TFile *file = new TFile("data.root", "RECREATE");
+
+    // Create a TTree
+    TTree *tree = new TTree("data", "Particle Data");
+
+    // Variables to hold the data
+    Int_t category, momentum;
+    Double_t N_as, N_pi_s, N_k_s, N_p_s, N_u_s;
+
+    // Create branches
+    tree->Branch("category", &category, "category/I");
+    tree->Branch("momentum", &momentum, "momentum/I");
+    tree->Branch("N_as", &N_as, "N_as/D");
+    tree->Branch("N_pi_s", &N_pi_s, "N_pi_s/D");
+    tree->Branch("N_k_s", &N_k_s, "N_k_s/D");
+    tree->Branch("N_p_s", &N_p_s, "N_p_s/D");
+    tree->Branch("N_u_s", &N_u_s, "N_u_s/D");
+
+    // Read data from file
+    std::ifstream infile("your_file.txt");
+    std::string line;
+    
+    // Skip header
+    std::getline(infile, line);
+
+    while (std::getline(infile, line)) {
+        std::istringstream iss(line);
+        if (!(iss >> category >> momentum >> N_as >> N_pi_s >> N_k_s >> N_p_s >> N_u_s)) { break; }
+        tree->Fill();
+    }
+
+    // Create TGraphs for each category
+    TGraph *graph0 = new TGraph();
+    TGraph *graph1 = new TGraph();
+
+    // Fill graphs
+    for (Long64_t i = 0; i < tree->GetEntries(); ++i) {
+        tree->GetEntry(i);
+        if (category == 0) {
+            Double_t eff = N_pi_s / N_as;
+            graph0->SetPoint(graph0->GetN(), momentum, eff);
+        } else if (category == 1) {
+            Double_t eff = N_k_s / N_as;
+            graph1->SetPoint(graph1->GetN(), momentum, eff);
+        }
+    }
+
+    // Set graph styles
+    graph0->SetMarkerStyle(20);
+    graph0->SetMarkerColor(kBlue);
+    graph0->SetTitle("Category 0: #pi Efficiency");
+    graph0->GetXaxis()->SetTitle("Momentum");
+    graph0->GetYaxis()->SetTitle("Efficiency");
+
+    graph1->SetMarkerStyle(21);
+    graph1->SetMarkerColor(kRed);
+    graph1->SetTitle("Category 1: K Efficiency");
+    graph1->GetXaxis()->SetTitle("Momentum");
+    graph1->GetYaxis()->SetTitle("Efficiency");
+
+    // Create canvas and draw graphs
+    TCanvas *c1 = new TCanvas("c1", "Efficiency vs Momentum", 800, 600);
+    c1->Divide(1, 2);
+
+    c1->cd(1);
+    graph0->Draw("AP");
+
+    c1->cd(2);
+    graph1->Draw("AP");
+
+    c1->Update();
+    c1->SaveAs("efficiency_plots.png");
+
+    // Clean up
+    file->Write();
+    file->Close();
+    delete file;
+}
+
+void run() {
+    analyzeEfficiency();
+}

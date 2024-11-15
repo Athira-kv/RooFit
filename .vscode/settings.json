@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "sim_roofit_mom.C": "cpp",
+        "k_roofit_mom.C": "cpp"
+    }
+}
